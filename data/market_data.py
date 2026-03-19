@@ -26,21 +26,22 @@ class MarketData:
         self._subscribed_options: set[str] = set()
 
     async def start(self) -> None:
-        self._exchange.start_spot_ws()
-        await asyncio.sleep(2)  # let the first tick arrive
+        self._exchange.start_perp_ws()
+        await asyncio.sleep(2)
         log.info("market_data_started")
 
     async def get_spot_price(self) -> float:
-        cached = self._exchange.get_cached_spot()
+        """Returns the perp mark/last price (used as the 'spot' reference)."""
+        cached = self._exchange.get_cached_perp()
         if cached and cached.last > 0:
             return cached.last
-        return await self._exchange.get_spot_price()
+        return await self._exchange.get_perp_price()
 
     async def get_spot_bid_ask(self) -> tuple[float, float]:
-        cached = self._exchange.get_cached_spot()
+        cached = self._exchange.get_cached_perp()
         if cached and cached.bid > 0:
             return cached.bid, cached.ask
-        price = await self._exchange.get_spot_price()
+        price = await self._exchange.get_perp_price()
         return price, price
 
     def get_option_snapshot(self, symbol: str) -> Optional[TickerSnapshot]:

@@ -25,7 +25,9 @@ TESTNET: bool = os.getenv("BYBIT_TESTNET", "true").lower() == "true"
 DEMO: bool = os.getenv("BYBIT_DEMO", "false").lower() == "true"
 DRY_RUN: bool = os.getenv("DRY_RUN", "true").lower() == "true"
 
-SPOT_SYMBOL = "BTCUSDT"
+PERP_SYMBOL = "BTCUSDT"
+PERP_CATEGORY = "linear"
+PERP_LEVERAGE: int = 10
 BASE_COIN = "BTC"
 SETTLE_COIN = "USDT"
 ACCOUNT_TYPE = "UNIFIED"
@@ -105,7 +107,7 @@ OPTION_CHASE_INTERVAL_SEC: float = 2.0
 OPTION_CHASE_MAX_ATTEMPTS: int = 10
 OPTION_MAX_SLIPPAGE_PCT: float = 0.05  # max 5% above initial ask
 
-SPOT_ORDER_TYPE: str = "Market"  # spot supports market orders
+PERP_ORDER_TYPE: str = "Market"
 
 # ──────────────────── Risk Management ────────────────────────────
 

@@ -64,9 +64,9 @@ class BybitExchange:
             api_secret=config.BYBIT_API_SECRET,
         )
 
-        self._spot_ticker: Optional[TickerSnapshot] = None
+        self._perp_ticker: Optional[TickerSnapshot] = None
         self._option_tickers: dict[str, TickerSnapshot] = {}
-        self._ws_spot: Optional[WebSocket] = None
+        self._ws_perp: Optional[WebSocket] = None
         self._ws_option: Optional[WebSocket] = None
         self._ws_private: Optional[WebSocket] = None
         self._ws_lock = threading.Lock()
@@ -97,15 +97,34 @@ class BybitExchange:
     def error_count(self) -> int:
         return self._consecutive_errors
 
+    # ──────────────────── Perp Setup ──────────────────────────────
+
+    async def set_leverage(self) -> None:
+        """Set perp leverage (idempotent — ignores 'not modified' error)."""
+        try:
+            await self._call(
+                self._http.set_leverage,
+                category=config.PERP_CATEGORY,
+                symbol=config.PERP_SYMBOL,
+                buyLeverage=str(config.PERP_LEVERAGE),
+                sellLeverage=str(config.PERP_LEVERAGE),
+            )
+            log.info("leverage_set", leverage=config.PERP_LEVERAGE)
+        except Exception as exc:
+            if "110043" in str(exc):
+                log.info("leverage_already_set", leverage=config.PERP_LEVERAGE)
+            else:
+                raise
+
     # ──────────────────── Market Data (REST) ─────────────────────
 
-    async def get_spot_price(self) -> float:
-        if self._spot_ticker:
-            return self._spot_ticker.last
+    async def get_perp_price(self) -> float:
+        if self._perp_ticker:
+            return self._perp_ticker.last
         data = await self._call(
             self._http.get_tickers,
-            category="spot",
-            symbol=config.SPOT_SYMBOL,
+            category=config.PERP_CATEGORY,
+            symbol=config.PERP_SYMBOL,
         )
         return float(data["result"]["list"][0]["lastPrice"])
 
@@ -202,37 +221,36 @@ class BybitExchange:
         log.info("DRY_RUN_ORDER", side=side, symbol=symbol, qty=qty, price=price, orderId=oid)
         return {"orderId": oid, "orderStatus": "Filled", "avgPrice": str(price)}
 
-    async def buy_spot(self, qty: float) -> dict:
-        """Market buy spot BTC. Returns order result."""
-        log.info("buy_spot", qty=qty)
+    async def open_long_perp(self, qty: float) -> dict:
+        """Market buy BTCUSDT perp (open long). Returns order result."""
+        log.info("open_long_perp", qty=qty)
         if config.DRY_RUN:
-            price = await self.get_spot_price()
-            return self._fake_order("Buy", config.SPOT_SYMBOL, qty, price)
+            price = await self.get_perp_price()
+            return self._fake_order("Buy", config.PERP_SYMBOL, qty, price)
         data = await self._call(
             self._http.place_order,
-            category="spot",
-            symbol=config.SPOT_SYMBOL,
+            category=config.PERP_CATEGORY,
+            symbol=config.PERP_SYMBOL,
             side="Buy",
-            orderType=config.SPOT_ORDER_TYPE,
+            orderType=config.PERP_ORDER_TYPE,
             qty=str(qty),
-            marketUnit="baseCoin",
         )
         return data["result"]
 
-    async def sell_spot(self, qty: float) -> dict:
-        """Market sell spot BTC."""
-        log.info("sell_spot", qty=qty)
+    async def close_long_perp(self, qty: float) -> dict:
+        """Market sell BTCUSDT perp (close long). Returns order result."""
+        log.info("close_long_perp", qty=qty)
         if config.DRY_RUN:
-            price = await self.get_spot_price()
-            return self._fake_order("Sell", config.SPOT_SYMBOL, qty, price)
+            price = await self.get_perp_price()
+            return self._fake_order("Sell", config.PERP_SYMBOL, qty, price)
         data = await self._call(
             self._http.place_order,
-            category="spot",
-            symbol=config.SPOT_SYMBOL,
+            category=config.PERP_CATEGORY,
+            symbol=config.PERP_SYMBOL,
             side="Sell",
             orderType="Market",
             qty=str(qty),
-            marketUnit="baseCoin",
+            reduceOnly=True,
         )
         return data["result"]
 
@@ -378,30 +396,30 @@ class BybitExchange:
 
     # ─────────────────── WebSocket Streams ───────────────────────
 
-    def start_spot_ws(self) -> None:
-        """Start spot ticker WebSocket in background."""
-        self._ws_spot = WebSocket(
+    def start_perp_ws(self) -> None:
+        """Start perp ticker WebSocket in background."""
+        self._ws_perp = WebSocket(
             testnet=config.TESTNET,
-            channel_type="spot",
+            channel_type="linear",
         )
-        self._ws_spot.ticker_stream(
-            symbol=config.SPOT_SYMBOL,
-            callback=self._handle_spot_ticker,
+        self._ws_perp.ticker_stream(
+            symbol=config.PERP_SYMBOL,
+            callback=self._handle_perp_ticker,
         )
-        log.info("ws_spot_started")
+        log.info("ws_perp_started")
 
-    def _handle_spot_ticker(self, msg: dict) -> None:
+    def _handle_perp_ticker(self, msg: dict) -> None:
         try:
             d = msg.get("data", msg)
-            self._spot_ticker = TickerSnapshot(
-                symbol=config.SPOT_SYMBOL,
+            self._perp_ticker = TickerSnapshot(
+                symbol=config.PERP_SYMBOL,
                 bid=float(d.get("bid1Price", 0)),
                 ask=float(d.get("ask1Price", 0)),
                 last=float(d.get("lastPrice", 0)),
-                mark=float(d.get("lastPrice", 0)),
+                mark=float(d.get("markPrice", d.get("lastPrice", 0))),
             )
         except Exception:
-            log.debug("spot_ticker_parse_error", exc_info=True)
+            log.debug("perp_ticker_parse_error", exc_info=True)
 
     def subscribe_option_ticker(self, symbol: str) -> None:
         """Subscribe to a single option symbol's ticker."""
@@ -452,8 +470,8 @@ class BybitExchange:
             self._ws_private.wallet_stream(callback=on_wallet)
         log.info("ws_private_started")
 
-    def get_cached_spot(self) -> TickerSnapshot | None:
-        return self._spot_ticker
+    def get_cached_perp(self) -> TickerSnapshot | None:
+        return self._perp_ticker
 
     def get_cached_option(self, symbol: str) -> TickerSnapshot | None:
         return self._option_tickers.get(symbol)
@@ -461,7 +479,7 @@ class BybitExchange:
     # ────────────────────── Shutdown ─────────────────────────────
 
     def close(self) -> None:
-        for ws in (self._ws_spot, self._ws_option, self._ws_private):
+        for ws in (self._ws_perp, self._ws_option, self._ws_private):
             if ws is not None:
                 try:
                     ws.exit()

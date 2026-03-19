@@ -20,9 +20,12 @@ def compute_straddle_cost(spot: float, put_premium: float, qty: float) -> float:
     """
     Total USDT outflow for one straddle unit.
 
-    One straddle = qty BTC of spot + qty BTC of put.
+    One straddle = qty BTC perp (margin) + qty BTC of put premium.
+    Perp margin = notional / leverage.
     """
-    return qty * spot + qty * put_premium
+    perp_margin = (qty * spot) / config.PERP_LEVERAGE
+    put_cost = qty * put_premium
+    return perp_margin + put_cost
 
 
 def compute_num_straddles(

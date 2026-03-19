@@ -62,6 +62,9 @@ async def main():
     risk = RiskManager(portfolio, market)
     exit_mgr = ExitManager(exchange, market, portfolio)
 
+    if not config.DRY_RUN:
+        await exchange.set_leverage()
+
     # Use Session 1 config but we'll run it immediately
     session_cfg = SessionConfig(
         session_id=SessionId.SESSION_1,

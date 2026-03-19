@@ -52,17 +52,16 @@ async def build_straddle(
         qty=qty_btc,
     )
 
-    # ── Step 1: Buy spot ──
+    # ── Step 1: Open long perp ──
     try:
-        spot_result = await exchange.buy_spot(qty_btc)
-        spot_order_id = spot_result.get("orderId", "")
+        perp_result = await exchange.open_long_perp(qty_btc)
+        perp_order_id = perp_result.get("orderId", "")
     except Exception as exc:
-        log.error("spot_buy_failed", id=straddle_id, error=str(exc))
+        log.error("perp_buy_failed", id=straddle_id, error=str(exc))
         return None
 
-    # Use actual fill price from order result; fall back to last price
-    spot_fill_price = float(spot_result.get("avgPrice", 0)) or spot_price
-    log.info("spot_leg_filled", id=straddle_id, price=spot_fill_price, order_id=spot_order_id)
+    spot_fill_price = float(perp_result.get("avgPrice", 0)) or spot_price
+    log.info("perp_leg_filled", id=straddle_id, price=spot_fill_price, order_id=perp_order_id)
 
     # ── Step 2: Buy put (chase) ──
     put_ask = put.ask
@@ -70,14 +69,13 @@ async def build_straddle(
         _, put_ask = await market.get_option_bid_ask(put.symbol)
     if put_ask <= 0:
         log.error("put_no_ask_price", id=straddle_id, symbol=put.symbol)
-        # Unwind spot
-        await _emergency_sell_spot(exchange, qty_btc)
+        await _emergency_close_perp(exchange, qty_btc)
         return None
 
     put_result = await exchange.chase_buy_put(put.symbol, qty_btc, put_ask)
     if put_result is None:
         log.error("put_buy_failed", id=straddle_id, symbol=put.symbol)
-        await _emergency_sell_spot(exchange, qty_btc)
+        await _emergency_close_perp(exchange, qty_btc)
         return None
 
     put_fill_price = float(put_result.get("avgPrice", put_ask))
@@ -92,11 +90,11 @@ async def build_straddle(
         id=straddle_id,
         session_id=session_id,
         spot_leg=StraddleLeg(
-            instrument=config.SPOT_SYMBOL,
+            instrument=config.PERP_SYMBOL,
             side="Buy",
             qty=qty_btc,
             entry_price=spot_fill_price,
-            order_id=spot_order_id,
+            order_id=perp_order_id,
             avg_fill_price=spot_fill_price,
         ),
         put_leg=StraddleLeg(
@@ -141,14 +139,14 @@ async def unwind_straddle(
 
     exit_value = 0.0
 
-    # ── Sell spot first ──
+    # ── Close long perp first ──
     try:
-        await exchange.sell_spot(straddle.qty_btc)
+        await exchange.close_long_perp(straddle.qty_btc)
         spot_price = await market.get_spot_price()
         exit_value += straddle.qty_btc * spot_price
-        log.info("spot_sold", id=straddle.id, price=spot_price)
+        log.info("perp_closed", id=straddle.id, price=spot_price)
     except Exception as exc:
-        log.error("spot_sell_failed", id=straddle.id, error=str(exc))
+        log.error("perp_close_failed", id=straddle.id, error=str(exc))
         spot_price = await market.get_spot_price()
         exit_value += straddle.qty_btc * spot_price
 
@@ -181,10 +179,10 @@ async def unwind_straddle(
     return exit_value
 
 
-async def _emergency_sell_spot(exchange: BybitExchange, qty: float) -> None:
-    """Best-effort unwind of a spot position after a failed put entry."""
+async def _emergency_close_perp(exchange: BybitExchange, qty: float) -> None:
+    """Best-effort unwind of a perp position after a failed put entry."""
     try:
-        await exchange.sell_spot(qty)
-        log.info("emergency_spot_sold", qty=qty)
+        await exchange.close_long_perp(qty)
+        log.info("emergency_perp_closed", qty=qty)
     except Exception:
-        log.error("emergency_spot_sell_failed", qty=qty, exc_info=True)
+        log.error("emergency_perp_close_failed", qty=qty, exc_info=True)

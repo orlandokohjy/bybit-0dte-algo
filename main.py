@@ -1,7 +1,7 @@
 """
 Bybit 0DTE BTC Options Algo — Main Entry Point
 
-Synthetic straddle strategy: long spot + long ITM put for gamma exposure.
+Synthetic straddle strategy: long perp + long ITM put for gamma exposure.
 Three sessions daily: 08:30, 12:00, 14:00 UTC.
 """
 from __future__ import annotations
@@ -55,7 +55,9 @@ class Algo:
             log.error("missing_api_credentials")
             sys.exit(1)
 
-        # ── Connect & fetch initial state ──
+        # ── Set perp leverage & connect ──
+        if not config.DRY_RUN:
+            await self.exchange.set_leverage()
         await self.market.start()
         spot = await self.market.get_spot_price()
         capital = await self.exchange.get_total_equity_usd()
