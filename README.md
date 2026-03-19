@@ -4,35 +4,6 @@ Automated execution engine for a **synthetic straddle** strategy on Bybit's BTC 
 
 The algo constructs a delta-neutral position by pairing a **long BTCUSDT perpetual** with a **long in-the-money put** expiring the same day. This creates a pure gamma exposure — the position profits from large intraday BTC moves in either direction and bleeds theta if price stays flat.
 
-## Strategy
-
-### Payoff Structure
-
-```
-P&L
- ^
- |  \                        /
- |    \                    /
- |      \                /
- |        \            /
- |          \        /
- |            \    /
- |              \/  ← max loss (put premium)
- |
- +----------+--+--+----------→ BTC Price
-           strike spot
-```
-
-**Entry:** Long 0.01 BTC perp (10x leverage) + Long 0.01 BTC ITM put
-
-**Exit:** Either take-profit at +30% or hard close at session end
-
-### Why It Works
-
-A deep ITM put has a delta near -1 and positive gamma. Combined with a long perp (delta = +1), the net portfolio is approximately delta-neutral at entry. As BTC moves, gamma causes the put delta to shift — the position naturally becomes long when BTC rises and short when BTC falls. This convexity is the edge: the put loses less on adverse moves than it gains on favorable ones.
-
-The cost of this exposure is **theta** — the time value of the put decays to zero by 08:00 UTC settlement. The strategy is profitable when intraday realized volatility exceeds the implied volatility priced into the put.
-
 ## Architecture
 
 ```
