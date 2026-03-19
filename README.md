@@ -194,7 +194,3 @@ python test_algo.py --level 4
 **Perp first, put second:** If the put chase fails, unwinding a perp is a single market order. If we bought the put first and the perp failed, we'd be stuck with an illiquid option position.
 
 **State persistence:** Open positions are written to `state/positions.json` on every change. If the process restarts, it loads existing positions and continues monitoring.
-
-## Disclaimer
-
-This software is for educational and research purposes only. Trading cryptocurrency derivatives involves substantial risk of loss. Past performance does not guarantee future results. Use at your own risk.
