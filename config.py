@@ -82,7 +82,7 @@ SESSIONS: list[SessionConfig] = [
     SessionConfig(
         session_id=SessionId.SESSION_3,
         entry_time_utc=time(14, 0),
-        close_time_utc=time(7, 30),  # next day, 30 min before 08:00 settlement
+        close_time_utc=time(18, 0),
         half_allocation=False,
         use_sod_ivc=True,
     ),
